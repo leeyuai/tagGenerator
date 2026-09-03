@@ -259,11 +259,6 @@
       <input id="contract" value="114083">
     </div>
 
-    <div class="field">
-      <label for="prefix">字軌（3碼英文）</label>
-      <input id="prefix" value="KQA" maxlength="3" style="text-transform:uppercase">
-    </div>
-
     <div class="divider"></div>
 
     <div id="batchList"></div>
@@ -350,6 +345,7 @@ function computeSegments(start, end){
 }
 
 let lastPageCount = 0;
+let lastPrefixesLabel = '';
 let batchSeq = 0;
 
 function batchRowHtml(id, data){
@@ -359,6 +355,16 @@ function batchRowHtml(id, data){
       <div class="batchhead">
         <span class="tag">批次 #${id}</span>
         <button type="button" class="removeBtn" onclick="removeBatch(${id})">刪除這個批次</button>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>字軌（3碼英文）</label>
+          <input class="b-prefix" value="${data.prefix ?? ''}" maxlength="3" style="text-transform:uppercase">
+        </div>
+        <div class="field">
+          <label>車種</label>
+          <input class="b-vehicleType" value="${data.vehicleType ?? '新式交通車'}">
+        </div>
       </div>
       <div class="field">
         <label>地區</label>
@@ -404,17 +410,16 @@ function removeBatch(id){
 }
 
 function initDefaultBatches(){
-  addBatch({region:'新竹區', weight:20, startBox:3, startSerial:2801, endSerial:3300});
+  addBatch({prefix:'KQA', vehicleType:'新式交通車', region:'新竹區', weight:20, startBox:1, startSerial:2801, endSerial:3300});
 }
 
 function generate(){
   const contract = document.getElementById('contract').value.trim();
-  const prefix = document.getElementById('prefix').value.trim().toUpperCase();
   const alertsEl = document.getElementById('alerts');
   alertsEl.innerHTML = '';
 
-  if (!contract || !prefix){
-    alertsEl.innerHTML = '<div class="warn">請把契約號與字軌填完整再產生。</div>';
+  if (!contract){
+    alertsEl.innerHTML = '<div class="warn">請把契約號填完整再產生。</div>';
     return;
   }
 
@@ -426,9 +431,12 @@ function generate(){
 
   const warnings = [];
   const skipNotes = [];
-  const allTickets = []; // {region, weight, boxNo, segStart, segEnd}
+  const allTickets = []; // {prefix, vehicleType, region, weight, boxNo, segStart, segEnd}
+  const usedPrefixes = new Set();
 
   for (const el of batchEls){
+    const prefix = el.querySelector('.b-prefix').value.trim().toUpperCase();
+    const vehicleType = el.querySelector('.b-vehicleType').value.trim() || '新式交通車';
     const region = el.querySelector('.b-region').value.trim();
     const weight = el.querySelector('.b-weight').value.trim();
     const startBox = parseInt(el.querySelector('.b-startBox').value, 10);
@@ -436,8 +444,8 @@ function generate(){
     const endSerial = parseInt(el.querySelector('.b-endSerial').value, 10);
     const tag = region || ('批次#' + el.id.replace('batch-',''));
 
-    if (!region || isNaN(startBox) || isNaN(startSerial) || isNaN(endSerial)){
-      warnings.push(`「${tag}」欄位沒填完整，這個批次已略過。`);
+    if (!prefix || !region || isNaN(startBox) || isNaN(startSerial) || isNaN(endSerial)){
+      warnings.push(`「${tag}」字軌或其他欄位沒填完整，這個批次已略過。`);
       continue;
     }
     if (endSerial < startSerial){
@@ -460,8 +468,11 @@ function generate(){
       skipNotes.push(`「${tag}」已自動跳過：${uniq.map(h=>h+'xx').join('、')}（併入前一張標籤區間）。`);
     }
 
+    usedPrefixes.add(prefix);
     segments.forEach((seg, i) => {
       allTickets.push({
+        prefix,
+        vehicleType,
         region,
         weight,
         boxNo: startBox + i,
@@ -486,6 +497,8 @@ function generate(){
     document.getElementById('downloadBtn').disabled = true;
     return;
   }
+
+  lastPrefixesLabel = [...usedPrefixes].sort().join('-');
 
   // Render pages — batches flow one after another into the same
   // continuous grid, exactly like the original paper sheet.
@@ -512,17 +525,17 @@ function generate(){
           <div class="v boxno">${t.boxNo}</div>
         </div>
         <div class="c2">
-          <div class="l1">新式交通車</div>
+          <div class="l1">${t.vehicleType}</div>
           <div class="l2">${t.region}</div>
           <div class="l3">重量:${t.weight} <span class="kgs">KGS</span></div>
         </div>
         <div class="c3">
-          <span class="prefix">${prefix}</span>
+          <span class="prefix">${t.prefix}</span>
           <span class="range">${t.segStart}-${t.segEnd}</span>
         </div>
       `;
       pageDiv.appendChild(ticket);
-      tbody.push(`<tr><td>${t.boxNo}</td><td>${prefix}${t.segStart}-${t.segEnd}</td><td>${t.region}</td></tr>`);
+      tbody.push(`<tr><td>${t.boxNo}</td><td>${t.prefix}${t.segStart}-${t.segEnd}</td><td>${t.vehicleType}</td><td>${t.region}</td></tr>`);
     });
     root.appendChild(pageDiv);
   }
@@ -535,7 +548,7 @@ function generate(){
 
   document.getElementById('tableWrap').style.display = 'block';
   document.getElementById('segtable').innerHTML =
-    '<tr><th>箱號</th><th>標籤序號</th><th>地區</th></tr>' + tbody.join('');
+    '<tr><th>箱號</th><th>標籤序號</th><th>車種</th><th>地區</th></tr>' + tbody.join('');
 
   document.getElementById('downloadBtn').disabled = false;
 }
@@ -562,7 +575,7 @@ async function downloadPdf(){
   }
 
   const contract = document.getElementById('contract').value.trim() || 'labels';
-  const prefix = document.getElementById('prefix').value.trim().toUpperCase() || '';
+  const prefix = lastPrefixesLabel || '';
   pdf.save(`交通車標籤_${prefix}_${contract}.pdf`);
 
   btn.disabled = false;
