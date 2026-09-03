@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>交通車標籤產生器</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#1c1c1c;
+    --paper:#fafaf7;
+    --panel:#ffffff;
+    --line:#dedad0;
+    --red:#c81e1e;
+    --accent:#2f5d50;
+    --warn:#a8380a;
+    --warnbg:#fdf1e8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+  }
+  .layout{
+    display:grid;
+    grid-template-columns: 380px 1fr;
+    min-height:100vh;
+  }
+  .side{
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    padding:28px 24px 40px;
+  }
+  .side h1{
+    font-size:19px;
+    margin:0 0 4px;
+    letter-spacing:.02em;
+  }
+  .side p.sub{
+    margin:0 0 26px;
+    font-size:12.5px;
+    color:#767267;
+    line-height:1.6;
+  }
+  .field{ margin-bottom:16px; }
+  .field label{
+    display:block;
+    font-size:12.5px;
+    color:#544f45;
+    margin-bottom:5px;
+  }
+  .field input{
+    width:100%;
+    padding:8px 10px;
+    font-size:14px;
+    border:1px solid #cfcabd;
+    border-radius:4px;
+    background:#fffefb;
+    font-family:inherit;
+  }
+  .field input:focus{
+    outline:2px solid var(--accent);
+    outline-offset:1px;
+  }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .batch{
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:14px 14px 6px;
+    margin-bottom:14px;
+    background:#fdfcf9;
+    position:relative;
+  }
+  .batch .batchhead{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:10px;
+  }
+  .batch .batchhead .tag{
+    font-size:12px;
+    font-weight:600;
+    color:var(--accent);
+    letter-spacing:.03em;
+  }
+  .batch .removeBtn{
+    border:none;
+    background:none;
+    color:#a8380a;
+    font-size:12px;
+    cursor:pointer;
+    padding:2px 4px;
+  }
+  .batch .removeBtn:hover{ text-decoration:underline; }
+  .divider{
+    height:1px;
+    background:var(--line);
+    margin:22px 0;
+  }
+  .field-note{ font-size:11px; color:#918c80; margin-top:4px; }
+  button.primary{
+    width:100%;
+    padding:11px;
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    border-radius:4px;
+    font-size:14.5px;
+    letter-spacing:.02em;
+    cursor:pointer;
+    margin-top:6px;
+  }
+  button.primary:hover{ background:#264a40; }
+  button.secondary{
+    width:100%;
+    padding:10px;
+    background:#fff;
+    color:var(--accent);
+    border:1px solid var(--accent);
+    border-radius:4px;
+    font-size:14px;
+    cursor:pointer;
+    margin-top:10px;
+  }
+  button.secondary:disabled{
+    color:#aaa; border-color:#ddd; cursor:not-allowed;
+  }
+  .main{
+    padding:28px 32px 60px;
+    overflow-x:auto;
+  }
+  .summary{
+    display:flex;
+    gap:22px;
+    margin-bottom:18px;
+    flex-wrap:wrap;
+  }
+  .stat{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:10px 16px;
+    min-width:100px;
+  }
+  .stat .n{ font-size:20px; font-weight:600; }
+  .stat .l{ font-size:11.5px; color:#767267; }
+  .warn{
+    background:var(--warnbg);
+    border:1px solid #eecda8;
+    color:var(--warn);
+    padding:10px 14px;
+    border-radius:5px;
+    font-size:13px;
+    margin-bottom:16px;
+    line-height:1.6;
+  }
+  .skipnote{
+    background:#f0f0eb;
+    border:1px solid var(--line);
+    color:#544f45;
+    padding:10px 14px;
+    border-radius:5px;
+    font-size:12.5px;
+    margin-bottom:16px;
+    line-height:1.6;
+  }
+  #pdfRoot{ background:#e7e4da; padding:1px; }
+  .pdfpage{
+    background:#fff;
+    width:1122px;
+    height:793px;
+    margin:0 auto 24px;
+    padding:26px 34px;
+    box-shadow:0 1px 4px rgba(0,0,0,.15);
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-auto-flow:column;
+    grid-template-rows:repeat(5,1fr);
+    gap:6px 26px;
+  }
+  .ticket{
+    border:none;
+    display:flex;
+    align-items:center;
+    padding:0 18px;
+    color:#111;
+  }
+  .ticket .c1{
+    flex:0 0 20%;
+    text-align:center;
+    line-height:1.3;
+    font-family:"DFKai-SB","BiauKai","標楷體","KaiTi","TW-Kai",cursive;
+  }
+  .ticket .c1 .k{ font-size:19px; }
+  .ticket .c1 .v{ font-size:20px; }
+  .ticket .c1 .v.boxno{ font-size:27px; font-weight:600; }
+  .ticket .c1 .gap{ height:6px; }
+  .ticket .c2{
+    flex:0 0 27%;
+    text-align:left;
+    padding-left:6px;
+    font-family:"DFKai-SB","BiauKai","標楷體","KaiTi","TW-Kai",cursive;
+  }
+  .ticket .c2 .l1{ font-size:24px; font-weight:400; }
+  .ticket .c2 .l2{ font-size:27px; font-weight:400; margin:3px 0; }
+  .ticket .c2 .l3{ font-size:18px; }
+  .ticket .c2 .l3 .kgs{ font-size:13px; }
+  .ticket .c3{
+    flex:1;
+    text-align:center;
+    font-family:"MingLiU","PMingLiU","細明體","Noto Serif TC",serif;
+  }
+  .ticket .c3 .prefix{
+    font-size:41px;
+    font-weight:400;
+    letter-spacing:.15em;
+    display:block;
+  }
+  .ticket .c3 .range{
+    font-size:46px;
+    font-weight:400;
+    letter-spacing:.06em;
+    white-space:nowrap;
+    display:block;
+  }
+  .emptyhint{
+    color:#918c80;
+    font-size:13.5px;
+    padding:40px 4px;
+  }
+  table.segtable{
+    border-collapse:collapse;
+    width:100%;
+    max-width:640px;
+    font-size:12.5px;
+    margin-top:6px;
+  }
+  table.segtable th, table.segtable td{
+    border:1px solid var(--line);
+    padding:5px 10px;
+    text-align:left;
+  }
+  table.segtable th{ background:#f1efe8; font-weight:600; }
+  details{ margin-bottom:20px; }
+  summary{ cursor:pointer; font-size:13px; color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <div class="side">
+    <h1>交通車標籤產生器</h1>
+    <p class="sub">輸入契約資料與序號區間，自動依「每百分兩段（01–55 / 56–00）、百位數或千位數逢4整段跳過並併入前段」的規則排版標籤，並輸出可列印的 PDF。可新增多個地區批次，會依序排進同一份 PDF。</p>
+
+    <div class="field">
+      <label for="contract">契約號</label>
+      <input id="contract" value="114083">
+    </div>
+
+    <div class="field">
+      <label for="prefix">字軌（3碼英文）</label>
+      <input id="prefix" value="KQA" maxlength="3" style="text-transform:uppercase">
+    </div>
+
+    <div class="divider"></div>
+
+    <div id="batchList"></div>
+    <button class="secondary" onclick="addBatch()">＋ 新增地區批次</button>
+
+    <div class="field-note" style="margin-top:14px;">每 100 號自動分成 X01–X55 與 X56–(X+1)00 兩張標籤；若下一百號的百位數或千位數含 4（例如 6401–6500，或整個 4000–4999），該整段會被跳過，並自動併入前一段（例如 6301–6500 會排成 6301–6355、6356–6500；3856–5322 則會排成…3901–3955、3956–5000（併入整個 4000 字頭）、5001–5055…）。多個批次會依上下順序、接續排進同一份標籤版面（跟原本紙本一樣，不會強制每個地區另起一頁）。</div>
+
+    <button class="primary" onclick="generate()">產生標籤預覽</button>
+    <button class="secondary" id="downloadBtn" onclick="downloadPdf()" disabled>下載 PDF</button>
+  </div>
+
+  <div class="main">
+    <div id="alerts"></div>
+    <div class="summary" id="summary" style="display:none;">
+      <div class="stat"><div class="n" id="statCount">0</div><div class="l">標籤張數</div></div>
+      <div class="stat"><div class="n" id="statBoxes">0</div><div class="l">地區批次數</div></div>
+      <div class="stat"><div class="n" id="statPages">0</div><div class="l">PDF 頁數</div></div>
+      <div class="stat"><div class="n" id="statSkipped">0</div><div class="l">跳過的百號段</div></div>
+    </div>
+
+    <details id="tableWrap" style="display:none;">
+      <summary>展開查看每張標籤的明細（序號區間 / 箱號）</summary>
+      <table class="segtable" id="segtable"></table>
+    </details>
+
+    <div id="pdfRoot">
+      <div class="emptyhint">填好左側欄位後按「產生標籤預覽」，這裡會顯示排版好的標籤，確認無誤後再下載 PDF。</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const PER_PAGE = 10; // 5 rows x 2 cols, matches sample layout
+
+// H is the "hundred group" formed by a 4-digit serial's first two digits
+// (thousands digit * 10 + hundreds digit), e.g. serial 4023 -> H=40, serial
+// 6455 -> H=64. A hundred group is forbidden if EITHER of those two digits
+// is 4 — i.e. hundreds digit 4 (like 6401-6500) OR thousands digit 4 (the
+// whole 4000-4999 block, 40xx-49xx). Checking both digits of H covers both.
+function isForbiddenHundred(H){
+  return String(H).split('').includes('4');
+}
+
+// Core segmentation algorithm.
+// Splits [start, end] into tickets of at most 55, breaking at each
+// hundred boundary (X01-X55 / X56-X00). Any hundred whose hundreds
+// digit is 4 is skipped entirely and merged into the preceding ticket.
+function computeSegments(start, end){
+  const segments = [];
+  const skippedHundreds = [];
+  let pos = start;
+  let guard = 0;
+  while (pos <= end && guard < 100000){
+    guard++;
+    const H = Math.floor(pos/100);
+    const hundredMid = H*100+55;
+    const hundredEnd = H*100+100;
+
+    if (isForbiddenHundred(H)){
+      skippedHundreds.push(H);
+      pos = hundredEnd+1;
+      continue;
+    }
+
+    if (pos <= hundredMid){
+      const segEnd = Math.min(hundredMid, end);
+      segments.push([pos, segEnd]);
+      pos = segEnd+1;
+    } else {
+      let extEnd = hundredEnd;
+      let nextH = H+1;
+      while (isForbiddenHundred(nextH)){
+        skippedHundreds.push(nextH);
+        extEnd = (nextH+1)*100;
+        nextH++;
+      }
+      const segEnd = Math.min(extEnd, end);
+      segments.push([pos, segEnd]);
+      pos = segEnd+1;
+    }
+  }
+  return {segments, skippedHundreds};
+}
+
+let lastPageCount = 0;
+let batchSeq = 0;
+
+function batchRowHtml(id, data){
+  data = data || {};
+  return `
+    <div class="batch" id="batch-${id}">
+      <div class="batchhead">
+        <span class="tag">批次 #${id}</span>
+        <button type="button" class="removeBtn" onclick="removeBatch(${id})">刪除這個批次</button>
+      </div>
+      <div class="field">
+        <label>地區</label>
+        <input class="b-region" value="${data.region ?? ''}">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>重量（KGS）</label>
+          <input class="b-weight" type="number" value="${data.weight ?? 20}">
+        </div>
+        <div class="field">
+          <label>起始箱號</label>
+          <input class="b-startBox" type="number" value="${data.startBox ?? 1}">
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>起始序號</label>
+          <input class="b-startSerial" type="number" value="${data.startSerial ?? ''}">
+        </div>
+        <div class="field">
+          <label>結束序號</label>
+          <input class="b-endSerial" type="number" value="${data.endSerial ?? ''}">
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function addBatch(data){
+  batchSeq++;
+  document.getElementById('batchList').insertAdjacentHTML('beforeend', batchRowHtml(batchSeq, data));
+}
+
+function removeBatch(id){
+  const el = document.getElementById('batch-'+id);
+  if (!el) return;
+  if (document.querySelectorAll('.batch').length <= 1){
+    alert('至少要保留一個批次。');
+    return;
+  }
+  el.remove();
+}
+
+function initDefaultBatches(){
+  addBatch({region:'新竹區', weight:20, startBox:3, startSerial:2801, endSerial:3300});
+}
+
+function generate(){
+  const contract = document.getElementById('contract').value.trim();
+  const prefix = document.getElementById('prefix').value.trim().toUpperCase();
+  const alertsEl = document.getElementById('alerts');
+  alertsEl.innerHTML = '';
+
+  if (!contract || !prefix){
+    alertsEl.innerHTML = '<div class="warn">請把契約號與字軌填完整再產生。</div>';
+    return;
+  }
+
+  const batchEls = [...document.querySelectorAll('.batch')];
+  if (batchEls.length === 0){
+    alertsEl.innerHTML = '<div class="warn">請至少新增一個地區批次。</div>';
+    return;
+  }
+
+  const warnings = [];
+  const skipNotes = [];
+  const allTickets = []; // {region, weight, boxNo, segStart, segEnd}
+
+  for (const el of batchEls){
+    const region = el.querySelector('.b-region').value.trim();
+    const weight = el.querySelector('.b-weight').value.trim();
+    const startBox = parseInt(el.querySelector('.b-startBox').value, 10);
+    const startSerial = parseInt(el.querySelector('.b-startSerial').value, 10);
+    const endSerial = parseInt(el.querySelector('.b-endSerial').value, 10);
+    const tag = region || ('批次#' + el.id.replace('batch-',''));
+
+    if (!region || isNaN(startBox) || isNaN(startSerial) || isNaN(endSerial)){
+      warnings.push(`「${tag}」欄位沒填完整，這個批次已略過。`);
+      continue;
+    }
+    if (endSerial < startSerial){
+      warnings.push(`「${tag}」結束序號不可小於起始序號，這個批次已略過。`);
+      continue;
+    }
+
+    const {segments, skippedHundreds} = computeSegments(startSerial, endSerial);
+
+    const endH = Math.floor(endSerial/100);
+    if (isForbiddenHundred(endH)){
+      warnings.push(`「${tag}」結束序號 ${endSerial} 本身落在含4的區段（${endH}xx，百位或千位為4皆算），依規則這段不能使用，請把結束序號改成 ${endH*100}（不含）或更早。`);
+    }
+    const startH = Math.floor(startSerial/100);
+    if (isForbiddenHundred(startH)){
+      warnings.push(`「${tag}」起始序號 ${startSerial} 落在含4的區段（${startH}xx，百位或千位為4皆算），已自動從下一個可用區段（${(startH+1)*100+1}）開始排。`);
+    }
+    if (skippedHundreds.length){
+      const uniq = [...new Set(skippedHundreds)].sort((a,b)=>a-b);
+      skipNotes.push(`「${tag}」已自動跳過：${uniq.map(h=>h+'xx').join('、')}（併入前一張標籤區間）。`);
+    }
+
+    segments.forEach((seg, i) => {
+      allTickets.push({
+        region,
+        weight,
+        boxNo: startBox + i,
+        segStart: seg[0],
+        segEnd: seg[1]
+      });
+    });
+  }
+
+  if (warnings.length){
+    alertsEl.innerHTML = warnings.map(w=>`<div class="warn">${w}</div>`).join('');
+  }
+  if (skipNotes.length){
+    alertsEl.innerHTML += skipNotes.map(w=>`<div class="skipnote">${w}</div>`).join('');
+  }
+
+  if (allTickets.length === 0){
+    alertsEl.innerHTML += '<div class="warn">目前沒有任何可產生的標籤，請檢查各批次的欄位。</div>';
+    document.getElementById('pdfRoot').innerHTML = '<div class="emptyhint">沒有可產生的標籤。</div>';
+    document.getElementById('summary').style.display='none';
+    document.getElementById('tableWrap').style.display='none';
+    document.getElementById('downloadBtn').disabled = true;
+    return;
+  }
+
+  // Render pages — batches flow one after another into the same
+  // continuous grid, exactly like the original paper sheet.
+  const root = document.getElementById('pdfRoot');
+  root.innerHTML = '';
+  const pageCount = Math.ceil(allTickets.length / PER_PAGE);
+  lastPageCount = pageCount;
+
+  const tbody = [];
+  for (let p=0; p<pageCount; p++){
+    const pageDiv = document.createElement('div');
+    pageDiv.className = 'pdfpage';
+    pageDiv.id = 'page-'+p;
+    const pageTickets = allTickets.slice(p*PER_PAGE, p*PER_PAGE+PER_PAGE);
+    pageTickets.forEach(t => {
+      const ticket = document.createElement('div');
+      ticket.className = 'ticket';
+      ticket.innerHTML = `
+        <div class="c1">
+          <div class="k">契約號</div>
+          <div class="v">${contract}</div>
+          <div class="gap"></div>
+          <div class="k">箱號</div>
+          <div class="v boxno">${t.boxNo}</div>
+        </div>
+        <div class="c2">
+          <div class="l1">新式交通車</div>
+          <div class="l2">${t.region}</div>
+          <div class="l3">重量:${t.weight} <span class="kgs">KGS</span></div>
+        </div>
+        <div class="c3">
+          <span class="prefix">${prefix}</span>
+          <span class="range">${t.segStart}-${t.segEnd}</span>
+        </div>
+      `;
+      pageDiv.appendChild(ticket);
+      tbody.push(`<tr><td>${t.boxNo}</td><td>${prefix}${t.segStart}-${t.segEnd}</td><td>${t.region}</td></tr>`);
+    });
+    root.appendChild(pageDiv);
+  }
+
+  document.getElementById('summary').style.display = 'flex';
+  document.getElementById('statCount').textContent = allTickets.length;
+  document.getElementById('statBoxes').textContent = batchEls.length + ' 個批次';
+  document.getElementById('statPages').textContent = pageCount;
+  document.getElementById('statSkipped').textContent = skipNotes.length;
+
+  document.getElementById('tableWrap').style.display = 'block';
+  document.getElementById('segtable').innerHTML =
+    '<tr><th>箱號</th><th>標籤序號</th><th>地區</th></tr>' + tbody.join('');
+
+  document.getElementById('downloadBtn').disabled = false;
+}
+
+initDefaultBatches();
+
+async function downloadPdf(){
+  const btn = document.getElementById('downloadBtn');
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = '產生中…';
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation:'landscape', unit:'pt', format:'a4' });
+
+  for (let p=0; p<lastPageCount; p++){
+    const el = document.getElementById('page-'+p);
+    const canvas = await html2canvas(el, { scale:2, backgroundColor:'#ffffff' });
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    if (p>0) pdf.addPage('a4','landscape');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight);
+  }
+
+  const contract = document.getElementById('contract').value.trim() || 'labels';
+  const prefix = document.getElementById('prefix').value.trim().toUpperCase() || '';
+  pdf.save(`交通車標籤_${prefix}_${contract}.pdf`);
+
+  btn.disabled = false;
+  btn.textContent = originalText;
+}
+</script>
+</body>
+</html>
